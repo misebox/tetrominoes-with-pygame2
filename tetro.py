@@ -103,7 +103,7 @@ class Blocks:
     def shape(self):
         a = [[' ' for _ in range(self.width)] for _ in range(self.height)]
         for x, y in self.points:
-            a[y][x] = '#'
+            a[y][((x + self.width) % self.width)] = '#'
         return a
 
     def dump(self):
@@ -142,7 +142,7 @@ class Pile(Blocks):
     def points(self):
         all_points = set()
         for m in self.minos:
-            all_points |= set(map(lambda p: (m.x + p[0], m.y + p[1]), m.points))
+            all_points |= set(map(lambda p: ((m.x + p[0]) % cell_cols, m.y + p[1]), m.points))
         return all_points
 
     def add(self, m):
@@ -151,8 +151,11 @@ class Pile(Blocks):
         m.color.hsla = (h, s, l, a)
         self.minos.append(m)
 
+    def slide(self, dx):
+        for m in self.minos:
+            m.x = (m.x + dx + cell_cols) % cell_cols
+
     def clear_line(self):
-        points = self.points
         targets = []
         for y, line in enumerate(self.shape):
             if ''.join(line) == '#' * cell_cols:
@@ -173,6 +176,8 @@ class Pile(Blocks):
             for i in reversed(list(range(len(self.minos)))):
                 if self.minos[i].empty():
                     self.minos.pop(i)
+            global direction
+            direction *= -1
 
     def draw(self):
         for m in self.minos:
@@ -274,8 +279,13 @@ class Mino(Blocks):
 
     def draw(self):
         global msec
+        sx = cell_size
         sy = (cell_size * (msec % interval) // interval ) if self.state == FALLING else 0
-        super().draw(cell_size, sy)
+        for x, y in self.points:
+            px = ((self.x + x + cell_cols) % cell_cols) * cell_size + sx
+            py = (self.y + y) * cell_size + sy
+            pygame.draw.rect(screen, bg_color, (px, py, cell_size, cell_size))
+            pygame.draw.rect(screen, self.color, (px+bw, py+bw, cell_size-bw, cell_size-bw))
 
 def gameover():
     global pile
@@ -308,6 +318,8 @@ def main():
     pile = Pile()
     mino = create_mino()
     pressed = False
+    global direction
+    direction = 1
 
     global msec, interval
     msec = 0
@@ -347,6 +359,8 @@ def main():
             msec -= interval
             if mino.state != LANDED:
                 mino.move_down()
+                if mino.state == FALLING:
+                    pile.slide(direction)
         if mino.state == LANDED:
             pile.add(mino)
             mino = create_mino()
