@@ -74,7 +74,6 @@ class Blocks:
     def __init__(self, x=0, y=0):
         self.x = x
         self.y = y
-        self.points = set()
 
     @property
     def width(self):
@@ -90,6 +89,9 @@ class Blocks:
         else:
             return 0
 
+    def empty(self):
+        return self.points == set()
+
     def load(self, shape):
         points = set()
         for y, line in enumerate(shape):
@@ -97,6 +99,18 @@ class Blocks:
                 if ch == "#":
                     points.add((x, y))
         self.points = points
+
+    @property
+    def shape(self):
+        a = [[' ' for _ in range(self.width)] for _ in range(self.height)]
+        for x, y in self.points:
+            a[y][x] = '#'
+        return a
+
+    def dump(self):
+        for line in self.shape:
+            print(''.join(line))
+
     
     def draw(self, dx=0, dy=0):
         for x, y in self.points:
@@ -109,6 +123,7 @@ class Wall(Blocks):
     color = (50, 50, 50)
     def __init__(self):
         super().__init__()
+        self.points = set()
         for y in range(cell_rows):
             self.points.add((0, y))
             self.points.add((cell_cols+1, y))
@@ -116,42 +131,54 @@ class Wall(Blocks):
             self.points.add((x, cell_rows))
 
 
+
 class Pile(Blocks):
     color = (150, 150, 150)
 
     def __init__(self):
         super().__init__()
+        self.minos = []
 
-    def add(self, mino):
-        for x, y in mino.points:
-            self.points.add((mino.x + x, mino.y + y))
+    @property
+    def points(self):
+        all_points = set()
+        for m in self.minos:
+            all_points |= set(map(lambda p: (m.x + p[0], m.y + p[1]), m.points))
+        return all_points
+
+    def add(self, m):
+        m.state = PILED
+        self.minos.append(m)
 
     def clear_line(self):
-        sh = [[' ' for _ in range(cell_cols)] for _ in range(cell_rows)] 
-        for x, y in self.points:
-            sh[y][x] = '#'
-
+        points = self.points
         targets = []
-        for y, line in enumerate(sh):
-            if line == ['#'] * cell_cols:
+        for y, line in enumerate(self.shape):
+            if ''.join(line) == '#' * cell_cols:
                 targets.append(y)
-        for y in reversed(targets):
-            sh.pop(y)
-        for _ in targets:
-            sh.insert(0, [' ' for _ in range(cell_cols)])
-        if targets:
-            pile.load(sh)
+        for y in targets:
+            for m in self.minos:
+                m.delete_line(y)
+            for i in reversed(list(range(len(self.minos)))):
+                if self.minos[i].empty():
+                    self.minos.pop(i)
 
     def draw(self):
-        super().draw(1, 0)
+        for m in self.minos:
+            m.draw()
 
+
+FALLING = 1
+PILED = 2
 class Mino(Blocks):
     color = mino_color
     def __init__(self, x, y):
         super().__init__(x, y)
+        self.points = set()
         color, shape = random.choice(shapes)
         self.color = color
         self.load(shape)
+        self.state = FALLING
 
     def _move(self, dx, dy):
         if not self.collide(dx, dy):
@@ -167,6 +194,7 @@ class Mino(Blocks):
         return self._move(1, 0)
 
     def move_down(self):
+        msec = 0
         return self._move(0, 1)
 
     def drop(self):
@@ -205,6 +233,16 @@ class Mino(Blocks):
         py = self.y + dy
         return self._collide_with(wall, px+1, py) \
             or self._collide_with(pile, px, py)
+
+    def delete_line(self, cy):
+        lines = self.shape
+        for y in reversed(list(range(self.height))):
+            if self.y + y == cy:
+                lines.pop(y)
+                break
+        if self.y <= cy:
+            self.y += 1
+        self.load(lines)
 
     def draw(self):
         super().draw(1, 0)
@@ -277,12 +315,13 @@ def main():
             if mino:
                 if mino.collide(0, 1):
                     pile.add(mino)
-                    mino = Mino(5, 0)
-                    if mino.collide(0, 0):
-                        gameover()
                 else:
                     mino.move_down()
             pile.clear_line()
+            if mino.state == PILED:
+                mino = Mino(5, 0)
+                if mino.collide(0, 0):
+                    gameover()
         # clear
         screen.fill(bg_color)
         # drawing
