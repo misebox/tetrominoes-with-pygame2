@@ -111,12 +111,12 @@ class Blocks:
             print(''.join(line))
 
     
-    def draw(self, dx=0, dy=0):
+    def draw(self, sx=0, sy=0):
         for x, y in self.points:
-            px = self.x + dx + x
-            py = self.y + dy + y
-            pygame.draw.rect(screen, bg_color, (px*cell_size, py*cell_size, cell_size, cell_size))
-            pygame.draw.rect(screen, self.color, (px*cell_size+bw, py*cell_size+bw, cell_size-bw, cell_size-bw))
+            px = (self.x + x) * cell_size + sx
+            py = (self.y + y) * cell_size + sy
+            pygame.draw.rect(screen, bg_color, (px, py, cell_size, cell_size))
+            pygame.draw.rect(screen, self.color, (px+bw, py+bw, cell_size-bw, cell_size-bw))
 
 class Wall(Blocks):
     color = (50, 50, 50)
@@ -157,6 +157,16 @@ class Pile(Blocks):
         for y, line in enumerate(self.shape):
             if ''.join(line) == '#' * cell_cols:
                 targets.append(y)
+        # effect
+        for i in range(-5, 15):
+            s = 255 - i**2
+            for y in targets:
+                c = (s, s, s)
+                pygame.draw.rect(screen, c, (cell_size, y * cell_size,
+                                             cell_cols * cell_size, cell_size))
+            pygame.display.flip()
+            clock.tick(60)
+
         for y in targets:
             for m in self.minos:
                 m.delete_line(y)
@@ -175,7 +185,8 @@ def create_mino():
     return Mino(x, y, color, shape)
 
 FALLING = 1
-LANDED = 2
+LANDING = 2
+LANDED = 3
 class Mino(Blocks):
     def __init__(self, x, y, color, shape):
         super().__init__(x, y)
@@ -198,19 +209,25 @@ class Mino(Blocks):
         return self._move(1, 0)
 
     def move_down(self, land=True):
-        msec = 0
         success = self._move(0, 1)
-        if not success and land:
-            mino.state = LANDED
+        if success:
+            if self.collide(0, 1):
+                mino.state = LANDING
+            msec = 0
+        else:
+            if land:
+                mino.state = LANDED
         return success
             
 
     def drop(self, land=True):
         while self.move_down(land):
             display()
+            self.draw()
             clock.tick(120)
         display()
-
+        self.draw()
+        clock.tick(60)
 
     def _calc_rotate(self, reverse=False):
         points = set()
@@ -256,7 +273,9 @@ class Mino(Blocks):
         self.load(lines)
 
     def draw(self):
-        super().draw(1, 0)
+        global msec
+        sy = (cell_size * (msec % interval) // interval ) if self.state == FALLING else 0
+        super().draw(cell_size, sy)
 
 def gameover():
     global pile
@@ -268,7 +287,7 @@ def display():
     # drawing
     wall.draw()
     pile.draw()
-    if mino.state == FALLING:
+    if mino.state != LANDED:
         mino.draw()
 
     pygame.display.flip()
@@ -290,6 +309,7 @@ def main():
     mino = create_mino()
     pressed = False
 
+    global msec, interval
     msec = 0
     interval = 1000
     # Event loop
@@ -314,10 +334,10 @@ def main():
                     mino.move_down()
                 elif event.key in (K_RIGHT, K_d, K_l):
                     mino.move_right()
-                elif event.key in (K_r, K_UP, K_w, K_k) \
+                elif (not shift and event.key in (K_r, K_UP, K_w, K_k)) \
                 or (shift and event.key in (K_e,)):
                     mino.rotate_right()
-                elif event.key in (K_e,) \
+                elif (not shift and event.key in (K_e,)) \
                 or (shift and event.key in (K_UP, K_w, K_k)):
                     mino.rotate_left()
             elif event.type == KEYUP:
@@ -325,11 +345,8 @@ def main():
         
         if msec > interval:
             msec -= interval
-            if mino.state == FALLING:
-                if mino.collide(0, 1):
-                    mino.state = LANDED
-                else:
-                    mino.move_down()
+            if mino.state != LANDED:
+                mino.move_down()
         if mino.state == LANDED:
             pile.add(mino)
             mino = create_mino()
