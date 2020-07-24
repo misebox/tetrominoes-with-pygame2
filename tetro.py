@@ -148,6 +148,9 @@ class Pile(Blocks):
 
     def add(self, m):
         m.state = PILED
+        h, s, l, a = m.color.hsla
+        s = s // 2
+        m.color.hsla = (h, s, l, a)
         self.minos.append(m)
 
     def clear_line(self):
@@ -176,7 +179,7 @@ class Mino(Blocks):
         super().__init__(x, y)
         self.points = set()
         color, shape = random.choice(shapes)
-        self.color = color
+        self.color = pygame.Color(color)
         self.load(shape)
         self.state = FALLING
 
