@@ -11,7 +11,6 @@ from pygame.locals import *
 # config
 cell_size = 40
 bg_color = (30, 30, 30)
-mino_color = (50, 50, 240)
 bw = 1
 cell_cols = 10
 cell_rows = 20
@@ -147,7 +146,6 @@ class Pile(Blocks):
         return all_points
 
     def add(self, m):
-        m.state = PILED
         h, s, l, a = m.color.hsla
         s = s // 2
         m.color.hsla = (h, s, l, a)
@@ -170,18 +168,21 @@ class Pile(Blocks):
         for m in self.minos:
             m.draw()
 
+def create_mino():
+    color, shape = random.choice(shapes)
+    x = (cell_cols - len(shape[0])) // 2
+    y = 0
+    return Mino(x, y, color, shape)
 
 FALLING = 1
-PILED = 2
+LANDED = 2
 class Mino(Blocks):
-    color = mino_color
-    def __init__(self, x, y):
+    def __init__(self, x, y, color, shape):
         super().__init__(x, y)
         self.points = set()
-        color, shape = random.choice(shapes)
+        self.state = FALLING
         self.color = pygame.Color(color)
         self.load(shape)
-        self.state = FALLING
 
     def _move(self, dx, dy):
         if not self.collide(dx, dy):
@@ -196,13 +197,20 @@ class Mino(Blocks):
     def move_right(self):
         return self._move(1, 0)
 
-    def move_down(self):
+    def move_down(self, land=True):
         msec = 0
-        return self._move(0, 1)
+        success = self._move(0, 1)
+        if not success and land:
+            mino.state = LANDED
+        return success
+            
 
-    def drop(self):
-        while self.move_down():
-            pass
+    def drop(self, land=True):
+        while self.move_down(land):
+            display()
+            clock.tick(120)
+        display()
+
 
     def _calc_rotate(self, reverse=False):
         points = set()
@@ -218,7 +226,7 @@ class Mino(Blocks):
 
     def rotate_right(self, reverse=False):
         points = self._calc_rotate(reverse)
-        dry = Mino(self.x, self.y)
+        dry = Mino(self.x, self.y, self.color, self.shape)
         dry.points = points
         if not dry.collide():
             self.points = points
@@ -254,6 +262,16 @@ def gameover():
     global pile
     pile = Pile()
 
+def display():
+    # clear
+    screen.fill(bg_color)
+    # drawing
+    wall.draw()
+    pile.draw()
+    if mino.state == FALLING:
+        mino.draw()
+
+    pygame.display.flip()
 
 def main():
     # Initialise screen
@@ -261,23 +279,16 @@ def main():
     global screen
     screen = pygame.display.set_mode((480, 840))
     pygame.display.set_caption('tetro')
+    pygame.key.set_repeat(200,100)
 
-    # Fill background
-    background = pygame.Surface(screen.get_size())
-    background = background.convert()
-    background.fill(bg_color)
-
-    # Blit everything to the screen
-    screen.blit(background, (0, 0))
-    pygame.display.flip()
-
-    # Initialise clock
+    global clock
     clock = pygame.time.Clock()
 
-    global wall, pile
+    global wall, pile, mino
     wall = Wall()
     pile = Pile()
-    mino = Mino(5, 0)
+    mino = create_mino()
+    pressed = False
 
     msec = 0
     interval = 1000
@@ -288,51 +299,44 @@ def main():
             if event.type == QUIT:
                 return
             elif event.type == KEYDOWN:
-                shift = event.mod == KMOD_SHIFT
+                shift = bool(event.mod & KMOD_SHIFT)
                 if event.key == K_ESCAPE:
                     return
-                if event.key == K_SPACE:
-                    mino.drop()
-                if not mino:
+                elif event.key in (K_SPACE, K_f, K_d) and not pressed:
+                    pressed = True
+                    land = not (shift or event.key == K_f)
+                    mino.drop(land)
+                elif not mino:
                     continue
-                if event.key in (K_LEFT, K_a, K_h):
+                elif event.key in (K_LEFT, K_a, K_h):
                     mino.move_left()
-                if event.key in (K_DOWN, K_s, K_j):
+                elif event.key in (K_DOWN, K_s, K_j):
                     mino.move_down()
-                if event.key in (K_RIGHT, K_d, K_l):
+                elif event.key in (K_RIGHT, K_d, K_l):
                     mino.move_right()
-                if event.key in (K_r, K_UP, K_w, K_k) \
+                elif event.key in (K_r, K_UP, K_w, K_k) \
                 or (shift and event.key in (K_e,)):
                     mino.rotate_right()
-                if event.key in (K_e,) \
+                elif event.key in (K_e,) \
                 or (shift and event.key in (K_UP, K_w, K_k)):
                     mino.rotate_left()
             elif event.type == KEYUP:
-                if event.key == K_a or event.key == K_z:
-                    pass
-                if event.key == K_UP or event.key == K_DOWN:
-                    pass
+                pressed = False
         
         if msec > interval:
             msec -= interval
-            if mino:
+            if mino.state == FALLING:
                 if mino.collide(0, 1):
-                    pile.add(mino)
+                    mino.state = LANDED
                 else:
                     mino.move_down()
+        if mino.state == LANDED:
+            pile.add(mino)
+            mino = create_mino()
             pile.clear_line()
-            if mino.state == PILED:
-                mino = Mino(5, 0)
-                if mino.collide(0, 0):
-                    gameover()
-        # clear
-        screen.fill(bg_color)
-        # drawing
-        wall.draw()
-        pile.draw()
-        if mino:
-            mino.draw()
-
-        pygame.display.flip()
+            # next mino
+            if mino.collide(0, 0):
+                gameover()
+        display()
 
 if __name__ == '__main__': main()
