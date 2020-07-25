@@ -164,7 +164,7 @@ class Mino(Blocks):
         self.load(shape)
 
     def _move(self, dx, dy):
-        if not self.collide(dx, dy):
+        if not self.mediator.collide(self, dx, dy):
             self.x += dx
             self.y += dy
             return True
@@ -179,7 +179,7 @@ class Mino(Blocks):
     def move_down(self, land=True):
         success = self._move(0, 1)
         if success:
-            if self.collide(0, 1):
+            if self.mediator.collide(self, 0, 1):
                 mino.state = LANDING
             msec = 0
         else:
@@ -190,10 +190,10 @@ class Mino(Blocks):
 
     def drop(self, land=True):
         while self.move_down(land):
-            mediator.display()
+            self.mediator.display()
             self.draw()
             clock.tick(120)
-        mediator.display()
+        self.mediator.display()
         self.draw()
         clock.tick(60)
 
@@ -211,24 +211,13 @@ class Mino(Blocks):
 
     def rotate_right(self, reverse=False):
         points = self._calc_rotate(reverse)
-        dry = Mino(mediator, self.x, self.y, self.color, self.shape)
+        dry = Mino(self.mediator, self.x, self.y, self.color, self.shape)
         dry.points = points
-        if not dry.collide():
+        if not self.mediator.collide(dry):
             self.points = points
 
     def rotate_left(self):
         self.rotate_right(reverse=True)
-
-    def _collide_with(self, other, px=0, py=0):
-        points = set([(px + x, py + y)
-                    for x, y in self.points])
-        return (points & other.points) != set()
-
-    def collide(self, dx=0, dy=0):
-        px = self.x + dx
-        py = self.y + dy
-        return self._collide_with(wall, px+1, py) \
-            or self._collide_with(pile, px, py)
 
     def delete_line(self, cy):
         lines = self.shape
@@ -244,6 +233,7 @@ class Mino(Blocks):
         self.mediator.draw_mino(self)
 
 class BlockMediator:
+    direction = 1
     border = 1
     bg_color = (30, 30, 30)
 
@@ -251,6 +241,7 @@ class BlockMediator:
         self.wall = Wall(self)
         self.pile = Pile(self)
         self.mino = self.create_mino()
+        self.screen = pygame.display.set_mode((480, 840))
 
     def create_mino(self):
         color, shape = random.choice(shapes)
@@ -259,6 +250,17 @@ class BlockMediator:
         mino = Mino(self, x, y, color, shape)
         self.mino = mino
         return mino
+
+    def _collide_with(self, m, other, px=0, py=0):
+        points = set([(px + x, py + y)
+                    for x, y in m.points])
+        return (points & other.points) != set()
+
+    def collide(self, m, dx=0, dy=0):
+        px = m.x + dx
+        py = m.y + dy
+        return self._collide_with(m, self.wall, px+1, py) \
+            or self._collide_with(m, self.pile, px, py)
 
     def clear_line(self):
         targets = []
@@ -270,7 +272,7 @@ class BlockMediator:
             s = 255 - i**2
             for y in targets:
                 c = (s, s, s)
-                pygame.draw.rect(screen, c, (cell_size, y * cell_size,
+                pygame.draw.rect(self.screen, c, (cell_size, y * cell_size,
                                              cell_cols * cell_size, cell_size))
             pygame.display.flip()
             clock.tick(60)
@@ -281,14 +283,13 @@ class BlockMediator:
             for i in reversed(list(range(len(self.pile.minos)))):
                 if self.pile.minos[i].empty():
                     self.pile.minos.pop(i)
-            global direction
-            direction *= -1
+            self.direction *= -1
 
     def _draw_cell(self, color, cx, cy, dx, dy):
         px = cx * cell_size + dx
         py = cy * cell_size + dy
-        pygame.draw.rect(screen, self.bg_color, (px, py, cell_size, cell_size))
-        pygame.draw.rect(screen, color, (
+        pygame.draw.rect(self.screen, self.bg_color, (px, py, cell_size, cell_size))
+        pygame.draw.rect(self.screen, color, (
             px + self.border, py + self.border,
             cell_size-self.border, cell_size-self.border))
 
@@ -309,7 +310,7 @@ class BlockMediator:
 
     def display(self):
         # clear
-        screen.fill(self.bg_color)
+        self.screen.fill(self.bg_color)
         # drawing
         self.draw(wall)
         pile.draw()
@@ -325,8 +326,6 @@ class BlockMediator:
 def main():
     # Initialise screen
     pygame.init()
-    global screen
-    screen = pygame.display.set_mode((480, 840))
     pygame.display.set_caption('tetro')
     pygame.key.set_repeat(200,100)
 
@@ -334,14 +333,11 @@ def main():
     clock = pygame.time.Clock()
 
     global wall, pile, mino
-    global mediator
     mediator = BlockMediator()
     wall = mediator.wall
     pile = mediator.pile
     mino = mediator.mino
     pressed = False
-    global direction
-    direction = 1
 
     global msec, interval
     msec = 0
@@ -382,13 +378,13 @@ def main():
             if mino.state != LANDED:
                 mino.move_down()
                 if mino.state == FALLING:
-                    pile.slide(direction)
+                    pile.slide(mediator.direction)
         if mino.state == LANDED:
             pile.add(mino)
             mino = mediator.create_mino()
             mediator.clear_line()
             # next mino
-            if mino.collide(0, 0):
+            if mediator.collide(mino, 0, 0):
                 mediator.gameover()
         mediator.display()
 
