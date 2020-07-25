@@ -120,8 +120,9 @@ class Blocks:
 
 class Wall(Blocks):
     color = (50, 50, 50)
-    def __init__(self):
+    def __init__(self, mediator):
         super().__init__()
+        self.mediator = mediator
         self.points = set()
         for y in range(cell_rows):
             self.points.add((0, y))
@@ -130,12 +131,12 @@ class Wall(Blocks):
             self.points.add((x, cell_rows))
 
 
-
 class Pile(Blocks):
     color = (150, 150, 150)
 
-    def __init__(self):
+    def __init__(self, mediator):
         super().__init__()
+        self.mediator = mediator
         self.minos = []
 
     @property
@@ -183,18 +184,13 @@ class Pile(Blocks):
         for m in self.minos:
             m.draw()
 
-def create_mino():
-    color, shape = random.choice(shapes)
-    x = (cell_cols - len(shape[0])) // 2
-    y = 0
-    return Mino(x, y, color, shape)
-
 FALLING = 1
 LANDING = 2
 LANDED = 3
 class Mino(Blocks):
-    def __init__(self, x, y, color, shape):
+    def __init__(self, mediator, x, y, color, shape):
         super().__init__(x, y)
+        self.mediator = mediator
         self.points = set()
         self.state = FALLING
         self.color = pygame.Color(color)
@@ -227,10 +223,10 @@ class Mino(Blocks):
 
     def drop(self, land=True):
         while self.move_down(land):
-            display()
+            mediator.display()
             self.draw()
             clock.tick(120)
-        display()
+        mediator.display()
         self.draw()
         clock.tick(60)
 
@@ -248,7 +244,7 @@ class Mino(Blocks):
 
     def rotate_right(self, reverse=False):
         points = self._calc_rotate(reverse)
-        dry = Mino(self.x, self.y, self.color, self.shape)
+        dry = Mino(mediator, self.x, self.y, self.color, self.shape)
         dry.points = points
         if not dry.collide():
             self.points = points
@@ -287,20 +283,35 @@ class Mino(Blocks):
             pygame.draw.rect(screen, bg_color, (px, py, cell_size, cell_size))
             pygame.draw.rect(screen, self.color, (px+bw, py+bw, cell_size-bw, cell_size-bw))
 
+class BlockMediator:
+    def __init__(self):
+        self.wall = Wall(self)
+        self.pile = Pile(self)
+        self.mino = self.create_mino()
+
+    def create_mino(self):
+        color, shape = random.choice(shapes)
+        x = (cell_cols - len(shape[0])) // 2
+        y = 0
+        mino = Mino(self, x, y, color, shape)
+        self.mino = mino
+        return mino
+
+    def display(self):
+        # clear
+        screen.fill(bg_color)
+        # drawing
+        wall.draw()
+        pile.draw()
+        if mino.state != LANDED:
+            mino.draw()
+        pygame.display.flip()
+
+
 def gameover():
     global pile
-    pile = Pile()
-
-def display():
-    # clear
-    screen.fill(bg_color)
-    # drawing
-    wall.draw()
-    pile.draw()
-    if mino.state != LANDED:
-        mino.draw()
-
-    pygame.display.flip()
+    mediator = BlockMediator()
+    pile = mediator.pile
 
 def main():
     # Initialise screen
@@ -314,9 +325,11 @@ def main():
     clock = pygame.time.Clock()
 
     global wall, pile, mino
-    wall = Wall()
-    pile = Pile()
-    mino = create_mino()
+    global mediator
+    mediator = BlockMediator()
+    wall = mediator.wall
+    pile = mediator.pile
+    mino = mediator.mino
     pressed = False
     global direction
     direction = 1
@@ -363,11 +376,11 @@ def main():
                     pile.slide(direction)
         if mino.state == LANDED:
             pile.add(mino)
-            mino = create_mino()
+            mino = mediator.create_mino()
             pile.clear_line()
             # next mino
             if mino.collide(0, 0):
                 gameover()
-        display()
+        mediator.display()
 
 if __name__ == '__main__': main()
