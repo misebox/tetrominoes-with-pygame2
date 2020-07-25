@@ -10,7 +10,6 @@ from pygame.locals import *
 
 # config
 cell_size = 40
-bg_color = (30, 30, 30)
 cell_cols = 10
 cell_rows = 20
 
@@ -148,30 +147,6 @@ class Pile(Blocks):
         for m in self.minos:
             m.x = (m.x + dx + cell_cols) % cell_cols
 
-    def clear_line(self):
-        targets = []
-        for y, line in enumerate(self.shape):
-            if ''.join(line) == '#' * cell_cols:
-                targets.append(y)
-        # effect
-        for i in range(-5, 15):
-            s = 255 - i**2
-            for y in targets:
-                c = (s, s, s)
-                pygame.draw.rect(screen, c, (cell_size, y * cell_size,
-                                             cell_cols * cell_size, cell_size))
-            pygame.display.flip()
-            clock.tick(60)
-
-        for y in targets:
-            for m in self.minos:
-                m.delete_line(y)
-            for i in reversed(list(range(len(self.minos)))):
-                if self.minos[i].empty():
-                    self.minos.pop(i)
-            global direction
-            direction *= -1
-
     def draw(self):
         for m in self.minos:
             m.draw()
@@ -270,6 +245,7 @@ class Mino(Blocks):
 
 class BlockMediator:
     border = 1
+    bg_color = (30, 30, 30)
 
     def __init__(self):
         self.wall = Wall(self)
@@ -284,10 +260,34 @@ class BlockMediator:
         self.mino = mino
         return mino
 
+    def clear_line(self):
+        targets = []
+        for y, line in enumerate(self.pile.shape):
+            if ''.join(line) == '#' * cell_cols:
+                targets.append(y)
+        # effect
+        for i in range(-5, 15):
+            s = 255 - i**2
+            for y in targets:
+                c = (s, s, s)
+                pygame.draw.rect(screen, c, (cell_size, y * cell_size,
+                                             cell_cols * cell_size, cell_size))
+            pygame.display.flip()
+            clock.tick(60)
+
+        for y in targets:
+            for m in self.pile.minos:
+                m.delete_line(y)
+            for i in reversed(list(range(len(self.pile.minos)))):
+                if self.pile.minos[i].empty():
+                    self.pile.minos.pop(i)
+            global direction
+            direction *= -1
+
     def _draw_cell(self, color, cx, cy, dx, dy):
         px = cx * cell_size + dx
         py = cy * cell_size + dy
-        pygame.draw.rect(screen, bg_color, (px, py, cell_size, cell_size))
+        pygame.draw.rect(screen, self.bg_color, (px, py, cell_size, cell_size))
         pygame.draw.rect(screen, color, (
             px + self.border, py + self.border,
             cell_size-self.border, cell_size-self.border))
@@ -309,7 +309,7 @@ class BlockMediator:
 
     def display(self):
         # clear
-        screen.fill(bg_color)
+        screen.fill(self.bg_color)
         # drawing
         self.draw(wall)
         pile.draw()
@@ -386,7 +386,7 @@ def main():
         if mino.state == LANDED:
             pile.add(mino)
             mino = mediator.create_mino()
-            pile.clear_line()
+            mediator.clear_line()
             # next mino
             if mino.collide(0, 0):
                 mediator.gameover()
