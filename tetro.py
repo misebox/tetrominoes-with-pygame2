@@ -9,7 +9,6 @@ from pygame.locals import *
 
 
 # config
-cell_size = 40
 cell_cols = 10
 cell_rows = 20
 
@@ -111,9 +110,9 @@ class Blocks:
 
 class Wall(Blocks):
     color = (50, 50, 50)
-    def __init__(self, mediator):
+    def __init__(self, game):
         super().__init__()
-        self.mediator = mediator
+        self.game = game
         self.points = set()
         for y in range(cell_rows):
             self.points.add((0, y))
@@ -125,9 +124,9 @@ class Wall(Blocks):
 class Pile(Blocks):
     color = (150, 150, 150)
 
-    def __init__(self, mediator):
+    def __init__(self, game):
         super().__init__()
-        self.mediator = mediator
+        self.game = game
         self.minos = []
 
     @property
@@ -143,10 +142,6 @@ class Pile(Blocks):
         m.color.hsla = (h, s, l, a)
         self.minos.append(m)
 
-    def slide(self, dx):
-        for m in self.minos:
-            m.x = (m.x + dx + cell_cols) % cell_cols
-
     def draw(self):
         for m in self.minos:
             m.draw()
@@ -155,16 +150,16 @@ FALLING = 1
 LANDING = 2
 LANDED = 3
 class Mino(Blocks):
-    def __init__(self, mediator, x, y, color, shape):
+    def __init__(self, game, x, y, color, shape):
         super().__init__(x, y)
-        self.mediator = mediator
+        self.game = game
         self.points = set()
         self.state = FALLING
         self.color = pygame.Color(color)
         self.load(shape)
 
     def _move(self, dx, dy):
-        if not self.mediator.collide(self, dx, dy):
+        if not self.game.collide(self, dx, dy):
             self.x += dx
             self.y += dy
             return True
@@ -179,23 +174,21 @@ class Mino(Blocks):
     def move_down(self, land=True):
         success = self._move(0, 1)
         if success:
-            if self.mediator.collide(self, 0, 1):
-                mino.state = LANDING
-            msec = 0
+            if self.game.collide(self, 0, 1):
+                self.state = LANDING
+            self.game.msec = 0
         else:
             if land:
-                mino.state = LANDED
+                self.state = LANDED
         return success
             
 
     def drop(self, land=True):
         while self.move_down(land):
-            self.mediator.display()
-            self.draw()
-            clock.tick(120)
-        self.mediator.display()
-        self.draw()
-        clock.tick(60)
+            self.game.display()
+            self.game.clock.tick(120)
+        self.game.display()
+        self.game.clock.tick(60)
 
     def _calc_rotate(self, reverse=False):
         points = set()
@@ -211,9 +204,9 @@ class Mino(Blocks):
 
     def rotate_right(self, reverse=False):
         points = self._calc_rotate(reverse)
-        dry = Mino(self.mediator, self.x, self.y, self.color, self.shape)
+        dry = Mino(self.game, self.x, self.y, self.color, self.shape)
         dry.points = points
-        if not self.mediator.collide(dry):
+        if not self.game.collide(dry):
             self.points = points
 
     def rotate_left(self):
@@ -230,18 +223,25 @@ class Mino(Blocks):
         self.load(lines)
 
     def draw(self):
-        self.mediator.draw_mino(self)
+        self.game.draw_mino(self)
 
-class BlockMediator:
+class Game:
     direction = 1
     border = 1
     bg_color = (30, 30, 30)
+    cell_size = 40
 
     def __init__(self):
+        pygame.init()
+        pygame.display.set_caption('tetro')
+        pygame.key.set_repeat(200,100)
+        self.clock = pygame.time.Clock()
         self.wall = Wall(self)
         self.pile = Pile(self)
         self.mino = self.create_mino()
         self.screen = pygame.display.set_mode((480, 840))
+        self.msec = 0
+        self.interval = 1000
 
     def create_mino(self):
         color, shape = random.choice(shapes)
@@ -262,6 +262,10 @@ class BlockMediator:
         return self._collide_with(m, self.wall, px+1, py) \
             or self._collide_with(m, self.pile, px, py)
 
+    def slide(self):
+        for m in self.pile.minos:
+            m.x = (m.x + self.direction + cell_cols) % cell_cols
+
     def clear_line(self):
         targets = []
         for y, line in enumerate(self.pile.shape):
@@ -272,10 +276,10 @@ class BlockMediator:
             s = 255 - i**2
             for y in targets:
                 c = (s, s, s)
-                pygame.draw.rect(self.screen, c, (cell_size, y * cell_size,
-                                             cell_cols * cell_size, cell_size))
+                pygame.draw.rect(self.screen, c, (self.cell_size, y * self.cell_size,
+                                                cell_cols * self.cell_size, self.cell_size))
             pygame.display.flip()
-            clock.tick(60)
+            self.clock.tick(60)
 
         for y in targets:
             for m in self.pile.minos:
@@ -286,12 +290,12 @@ class BlockMediator:
             self.direction *= -1
 
     def _draw_cell(self, color, cx, cy, dx, dy):
-        px = cx * cell_size + dx
-        py = cy * cell_size + dy
-        pygame.draw.rect(self.screen, self.bg_color, (px, py, cell_size, cell_size))
+        px = cx * self.cell_size + dx
+        py = cy * self.cell_size + dy
+        pygame.draw.rect(self.screen, self.bg_color, (px, py, self.cell_size, self.cell_size))
         pygame.draw.rect(self.screen, color, (
             px + self.border, py + self.border,
-            cell_size-self.border, cell_size-self.border))
+            self.cell_size-self.border, self.cell_size-self.border))
 
     def draw(self, block, sx=0, sy=0, dx=0, dy=0):
         for x, y in block.points:
@@ -300,9 +304,8 @@ class BlockMediator:
             self._draw_cell(block.color, cx, cy, dx, dy)
 
     def draw_mino(self, m):
-        global msec
-        dx = cell_size
-        dy = (cell_size * (msec % interval) // interval ) if m.state == FALLING else 0
+        dx = self.cell_size
+        dy = (self.cell_size * (self.msec % self.interval) // self.interval ) if m.state == FALLING else 0
         for x, y in m.points:
             cx = ((m.x + x + cell_cols) % cell_cols)
             cy = (m.y + y)
@@ -312,80 +315,59 @@ class BlockMediator:
         # clear
         self.screen.fill(self.bg_color)
         # drawing
-        self.draw(wall)
-        pile.draw()
-        if mino.state != LANDED:
-            mino.draw()
+        self.draw(self.wall)
+        self.pile.draw()
+        self.mino.draw()
+        # update
         pygame.display.flip()
 
     def gameover(self):
         self.__init__()
-        global pile
-        pile = self.pile
 
-def main():
-    # Initialise screen
-    pygame.init()
-    pygame.display.set_caption('tetro')
-    pygame.key.set_repeat(200,100)
-
-    global clock
-    clock = pygame.time.Clock()
-
-    global wall, pile, mino
-    mediator = BlockMediator()
-    wall = mediator.wall
-    pile = mediator.pile
-    mino = mediator.mino
-    pressed = False
-
-    global msec, interval
-    msec = 0
-    interval = 1000
-    # Event loop
-    while 1:
-        msec += clock.tick(60)
-        for event in pygame.event.get():
-            if event.type == QUIT:
-                return
-            elif event.type == KEYDOWN:
-                shift = bool(event.mod & KMOD_SHIFT)
-                if event.key == K_ESCAPE:
-                    return
-                elif event.key in (K_SPACE, K_f, K_d) and not pressed:
-                    pressed = True
-                    land = not (shift or event.key == K_f)
-                    mino.drop(land)
-                elif not mino:
-                    continue
-                elif event.key in (K_LEFT, K_a, K_h):
-                    mino.move_left()
-                elif event.key in (K_DOWN, K_s, K_j):
+    def gameloop(self):
+        pressed = False
+        while 1:
+            mino = self.mino
+            # handle input
+            for event in pygame.event.get():
+                if event.type == QUIT: return
+                elif event.type == KEYDOWN:
+                    if event.key == K_ESCAPE: return
+                    shift = bool(event.mod & KMOD_SHIFT)
+                    if event.key in (K_SPACE, K_f, K_d) and not pressed:
+                        pressed = True
+                        land = not (shift or event.key == K_f)
+                        mino.drop(land)
+                    elif event.key in (K_DOWN, K_s, K_j):
+                        mino.move_down()
+                    elif event.key in (K_LEFT, K_a, K_h):
+                        mino.move_left()
+                    elif event.key in (K_RIGHT, K_d, K_l):
+                        mino.move_right()
+                    elif (not shift and event.key in (K_r, K_UP, K_w, K_k)) or (shift and event.key in (K_e,)):
+                        mino.rotate_right()
+                    elif (not shift and event.key in (K_e,)) or (shift and event.key in (K_UP, K_w, K_k)):
+                        mino.rotate_left()
+                elif event.type == KEYUP:
+                    pressed = False
+            # process tick
+            if self.msec > self.interval:
+                self.msec -= self.interval
+                if mino.state != LANDED:
                     mino.move_down()
-                elif event.key in (K_RIGHT, K_d, K_l):
-                    mino.move_right()
-                elif (not shift and event.key in (K_r, K_UP, K_w, K_k)) \
-                or (shift and event.key in (K_e,)):
-                    mino.rotate_right()
-                elif (not shift and event.key in (K_e,)) \
-                or (shift and event.key in (K_UP, K_w, K_k)):
-                    mino.rotate_left()
-            elif event.type == KEYUP:
-                pressed = False
-        
-        if msec > interval:
-            msec -= interval
-            if mino.state != LANDED:
-                mino.move_down()
-                if mino.state == FALLING:
-                    pile.slide(mediator.direction)
-        if mino.state == LANDED:
-            pile.add(mino)
-            mino = mediator.create_mino()
-            mediator.clear_line()
-            # next mino
-            if mediator.collide(mino, 0, 0):
-                mediator.gameover()
-        mediator.display()
+                    if mino.state == FALLING:
+                        self.slide()
+            if mino.state == LANDED:
+                self.pile.add(mino)
+                mino = self.create_mino()
+                self.clear_line()
+                if self.collide(mino, 0, 0):
+                    self.gameover()
+            # display
+            self.display()
+            # wait
+            self.msec += self.clock.tick(60)
 
-if __name__ == '__main__': main()
+if __name__ == '__main__':
+    game = Game()
+    game.gameloop()
