@@ -11,7 +11,6 @@ from pygame.locals import *
 # config
 cell_size = 40
 bg_color = (30, 30, 30)
-bw = 1
 cell_cols = 10
 cell_rows = 20
 
@@ -267,16 +266,11 @@ class Mino(Blocks):
         self.load(lines)
 
     def draw(self):
-        global msec
-        sx = cell_size
-        sy = (cell_size * (msec % interval) // interval ) if self.state == FALLING else 0
-        for x, y in self.points:
-            px = ((self.x + x + cell_cols) % cell_cols) * cell_size + sx
-            py = (self.y + y) * cell_size + sy
-            pygame.draw.rect(screen, bg_color, (px, py, cell_size, cell_size))
-            pygame.draw.rect(screen, self.color, (px+bw, py+bw, cell_size-bw, cell_size-bw))
+        self.mediator.draw_mino(self)
 
 class BlockMediator:
+    border = 1
+
     def __init__(self):
         self.wall = Wall(self)
         self.pile = Pile(self)
@@ -290,12 +284,28 @@ class BlockMediator:
         self.mino = mino
         return mino
 
-    def draw(self, block, sx=0, sy=0):
+    def _draw_cell(self, color, cx, cy, dx, dy):
+        px = cx * cell_size + dx
+        py = cy * cell_size + dy
+        pygame.draw.rect(screen, bg_color, (px, py, cell_size, cell_size))
+        pygame.draw.rect(screen, color, (
+            px + self.border, py + self.border,
+            cell_size-self.border, cell_size-self.border))
+
+    def draw(self, block, sx=0, sy=0, dx=0, dy=0):
         for x, y in block.points:
-            px = (block.x + x) * cell_size + sx
-            py = (block.y + y) * cell_size + sy
-            pygame.draw.rect(screen, bg_color, (px, py, cell_size, cell_size))
-            pygame.draw.rect(screen, block.color, (px+bw, py+bw, cell_size-bw, cell_size-bw))
+            cx = sx + x
+            cy = sy + y
+            self._draw_cell(block.color, cx, cy, dx, dy)
+
+    def draw_mino(self, m):
+        global msec
+        dx = cell_size
+        dy = (cell_size * (msec % interval) // interval ) if m.state == FALLING else 0
+        for x, y in m.points:
+            cx = ((m.x + x + cell_cols) % cell_cols)
+            cy = (m.y + y)
+            self._draw_cell(m.color, cx, cy, dx, dy)
 
     def display(self):
         # clear
