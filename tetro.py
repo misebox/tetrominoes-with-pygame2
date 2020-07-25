@@ -110,13 +110,6 @@ class Blocks:
         for line in self.shape:
             print(''.join(line))
 
-    
-    def draw(self, sx=0, sy=0):
-        for x, y in self.points:
-            px = (self.x + x) * cell_size + sx
-            py = (self.y + y) * cell_size + sy
-            pygame.draw.rect(screen, bg_color, (px, py, cell_size, cell_size))
-            pygame.draw.rect(screen, self.color, (px+bw, py+bw, cell_size-bw, cell_size-bw))
 
 class Wall(Blocks):
     color = (50, 50, 50)
@@ -297,21 +290,27 @@ class BlockMediator:
         self.mino = mino
         return mino
 
+    def draw(self, block, sx=0, sy=0):
+        for x, y in block.points:
+            px = (block.x + x) * cell_size + sx
+            py = (block.y + y) * cell_size + sy
+            pygame.draw.rect(screen, bg_color, (px, py, cell_size, cell_size))
+            pygame.draw.rect(screen, block.color, (px+bw, py+bw, cell_size-bw, cell_size-bw))
+
     def display(self):
         # clear
         screen.fill(bg_color)
         # drawing
-        wall.draw()
+        self.draw(wall)
         pile.draw()
         if mino.state != LANDED:
             mino.draw()
         pygame.display.flip()
 
-
-def gameover():
-    global pile
-    mediator = BlockMediator()
-    pile = mediator.pile
+    def gameover(self):
+        self.__init__()
+        global pile
+        pile = self.pile
 
 def main():
     # Initialise screen
@@ -380,7 +379,7 @@ def main():
             pile.clear_line()
             # next mino
             if mino.collide(0, 0):
-                gameover()
+                mediator.gameover()
         mediator.display()
 
 if __name__ == '__main__': main()
