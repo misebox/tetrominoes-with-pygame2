@@ -142,19 +142,16 @@ class Pile(Blocks):
         m.color.hsla = (h, s, l, a)
         self.minos.append(m)
 
-    def draw(self):
-        for m in self.minos:
-            m.draw()
-
-FALLING = 1
-LANDING = 2
-LANDED = 3
 class Mino(Blocks):
+    FALLING = 1
+    LANDING = 2
+    LANDED = 3
+
     def __init__(self, game, x, y, color, shape):
         super().__init__(x, y)
         self.game = game
         self.points = set()
-        self.state = FALLING
+        self.state = Mino.FALLING
         self.color = pygame.Color(color)
         self.load(shape)
 
@@ -175,20 +172,18 @@ class Mino(Blocks):
         success = self._move(0, 1)
         if success:
             if self.game.collide(self, 0, 1):
-                self.state = LANDING
+                self.state = Mino.LANDING
             self.game.msec = 0
         else:
             if land:
-                self.state = LANDED
+                self.state = Mino.LANDED
         return success
             
 
     def drop(self, land=True):
         while self.move_down(land):
             self.game.display()
-            self.game.clock.tick(120)
         self.game.display()
-        self.game.clock.tick(60)
 
     def _calc_rotate(self, reverse=False):
         points = set()
@@ -222,24 +217,72 @@ class Mino(Blocks):
             self.y += 1
         self.load(lines)
 
-    def draw(self):
-        self.game.draw_mino(self)
-
-class Game:
-    direction = 1
+class Renderer:
     border = 1
     bg_color = (30, 30, 30)
     cell_size = 40
 
+    def __init__(self, clock):
+        pygame.display.set_caption('tetro')
+        self.screen = pygame.display.set_mode((480, 840))
+        self.clock = clock
+    
+    def _draw_cell(self, color, cx, cy, dx, dy):
+        px = cx * self.cell_size + dx
+        py = cy * self.cell_size + dy
+        pygame.draw.rect(self.screen, self.bg_color, (px, py, self.cell_size, self.cell_size))
+        pygame.draw.rect(self.screen, color, (
+            px + self.border, py + self.border,
+            self.cell_size-self.border, self.cell_size-self.border))
+
+    def draw(self, block, sx=0, sy=0, dx=0, dy=0):
+        for x, y in block.points:
+            cx = sx + x
+            cy = sy + y
+            self._draw_cell(block.color, cx, cy, dx, dy)
+
+    def draw_mino(self, m, progress):
+        dx = self.cell_size
+        dy = math.floor(self.cell_size * progress) if m.state == Mino.FALLING else 0
+        for x, y in m.points:
+            # A line is looped
+            cx = ((m.x + x + cell_cols) % cell_cols)
+            cy = (m.y + y)
+            self._draw_cell(m.color, cx, cy, dx, dy)
+
+    def display(self, wall, pile, mino, progress):
+        # clear
+        self.screen.fill(self.bg_color)
+        # drawing
+        self.draw(wall)
+        for m in pile.minos:
+            self.draw_mino(m, progress)
+        self.draw_mino(mino, progress)
+        # update
+        pygame.display.flip()
+        return self.clock.tick(120)
+
+    def clear_effect(self, targets):
+        for i in range(-5, 15):
+            s = 255 - i**2
+            for y in targets:
+                c = (s, s, s)
+                pygame.draw.rect(self.screen, c, (self.cell_size, y * self.cell_size,
+                                                cell_cols * self.cell_size, self.cell_size))
+            pygame.display.flip()
+            self.clock.tick(60)
+
+class Game:
+    direction = 1
+
     def __init__(self):
         pygame.init()
-        pygame.display.set_caption('tetro')
         pygame.key.set_repeat(200,100)
         self.clock = pygame.time.Clock()
+        self.render = Renderer(self.clock)
         self.wall = Wall(self)
         self.pile = Pile(self)
         self.mino = self.create_mino()
-        self.screen = pygame.display.set_mode((480, 840))
         self.msec = 0
         self.interval = 1000
 
@@ -272,15 +315,7 @@ class Game:
             if ''.join(line) == '#' * cell_cols:
                 targets.append(y)
         # effect
-        for i in range(-5, 15):
-            s = 255 - i**2
-            for y in targets:
-                c = (s, s, s)
-                pygame.draw.rect(self.screen, c, (self.cell_size, y * self.cell_size,
-                                                cell_cols * self.cell_size, self.cell_size))
-            pygame.display.flip()
-            self.clock.tick(60)
-
+        self.render.clear_effect(targets)
         for y in targets:
             for m in self.pile.minos:
                 m.delete_line(y)
@@ -289,37 +324,9 @@ class Game:
                     self.pile.minos.pop(i)
             self.direction *= -1
 
-    def _draw_cell(self, color, cx, cy, dx, dy):
-        px = cx * self.cell_size + dx
-        py = cy * self.cell_size + dy
-        pygame.draw.rect(self.screen, self.bg_color, (px, py, self.cell_size, self.cell_size))
-        pygame.draw.rect(self.screen, color, (
-            px + self.border, py + self.border,
-            self.cell_size-self.border, self.cell_size-self.border))
-
-    def draw(self, block, sx=0, sy=0, dx=0, dy=0):
-        for x, y in block.points:
-            cx = sx + x
-            cy = sy + y
-            self._draw_cell(block.color, cx, cy, dx, dy)
-
-    def draw_mino(self, m):
-        dx = self.cell_size
-        dy = (self.cell_size * (self.msec % self.interval) // self.interval ) if m.state == FALLING else 0
-        for x, y in m.points:
-            cx = ((m.x + x + cell_cols) % cell_cols)
-            cy = (m.y + y)
-            self._draw_cell(m.color, cx, cy, dx, dy)
-
     def display(self):
-        # clear
-        self.screen.fill(self.bg_color)
-        # drawing
-        self.draw(self.wall)
-        self.pile.draw()
-        self.mino.draw()
-        # update
-        pygame.display.flip()
+        progress = (self.msec % self.interval) / self.interval
+        return self.render.display(self.wall, self.pile, self.mino, progress)
 
     def gameover(self):
         self.__init__()
@@ -353,20 +360,18 @@ class Game:
             # process tick
             if self.msec > self.interval:
                 self.msec -= self.interval
-                if mino.state != LANDED:
+                if mino.state != Mino.LANDED:
                     mino.move_down()
-                    if mino.state == FALLING:
+                    if mino.state == Mino.FALLING:
                         self.slide()
-            if mino.state == LANDED:
+            if mino.state == Mino.LANDED:
                 self.pile.add(mino)
                 mino = self.create_mino()
                 self.clear_line()
                 if self.collide(mino, 0, 0):
                     self.gameover()
-            # display
-            self.display()
-            # wait
-            self.msec += self.clock.tick(60)
+            # display and wait
+            self.msec += self.display()
 
 if __name__ == '__main__':
     game = Game()
