@@ -4,7 +4,6 @@ import math
 import os
 import getopt
 import pygame
-from socket import *
 from pygame.locals import *
 
 
@@ -351,9 +350,9 @@ class Game:
                         mino.move_left()
                     elif event.key in (K_RIGHT, K_d, K_l):
                         mino.move_right()
-                    elif (not shift and event.key in (K_r, K_UP, K_w, K_k)) or (shift and event.key in (K_e,)):
+                    elif (shift and event.key in (K_e,)) or (not shift and event.key in (K_r, K_UP, K_w, K_k)):
                         mino.rotate_right()
-                    elif (not shift and event.key in (K_e,)) or (shift and event.key in (K_UP, K_w, K_k)):
+                    elif (not shift and event.key in (K_e,)) or (shift and event.key in (K_r, K_UP, K_w, K_k)):
                         mino.rotate_left()
                 elif event.type == KEYUP:
                     pressed = False
